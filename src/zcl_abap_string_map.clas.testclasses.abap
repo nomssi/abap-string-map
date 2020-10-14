@@ -12,6 +12,14 @@ class ltcl_string_map definition
         b type abap_bool,
         c type i,
       end of ty_struc.
+    DATA mo_map TYPE REF TO zcl_abap_string_map.
+
+    METHODS setup.
+    METHODS teardown.
+    methods assert_create IMPORTING iv_from TYPE any
+                                    iv_exp TYPE string.
+    methods assert_from IMPORTING iv_from TYPE any.
+    METHODS assert_read_only_exception IMPORTING exc TYPE REF TO cx_root.
 
     methods get_set_has for testing.
     methods size_empty_clear for testing.
@@ -30,123 +38,103 @@ endclass.
 
 class ltcl_string_map implementation.
 
+  method setup.
+    mo_map = zcl_abap_string_map=>create( ).
+  ENDMETHOD.
+
+  method teardown.
+    FREE mo_map.
+  ENDMETHOD.
+
+  method assert_create.
+    try.
+      zcl_abap_string_map=>create( iv_from = iv_from ).
+      cl_abap_unit_assert=>fail( ).
+    catch cx_root into DATA(lx).
+      cl_abap_unit_assert=>assert_equals(
+        exp = iv_exp
+        act = lx->get_text( ) ).
+    endtry.
+  ENDMETHOD.
+
+  method assert_from.
+    DATA(lo_cut) = zcl_abap_string_map=>create( iv_from = iv_from ).
+    cl_abap_unit_assert=>assert_equals( exp = 1
+                                        act = lo_cut->size( ) ).
+    cl_abap_unit_assert=>assert_equals( exp = '1'
+                                        act = lo_cut->get( 'A' ) ).
+  ENDMETHOD.
+
+  method assert_read_only_exception.
+     cl_abap_unit_assert=>assert_equals(
+        exp = 'String map is read only'
+        act = exc->get_text( ) ).
+  ENDMETHOD.
+
   method create_from.
 
-    data lx type ref to cx_root.
-    data lo_src type ref to zcl_abap_string_map.
-    data lo_cut type ref to zcl_abap_string_map.
+    assert_create( iv_from = `abc`
+                   iv_exp = 'Incorrect input for string_map=>create, typekind g' ).
 
-    lo_src = zcl_abap_string_map=>create( ).
-    lo_src->set(
-      iv_key = 'A'
-      iv_val = '1' ).
+    assert_create( iv_from = me
+                   iv_exp =  'Incorrect string map instance to copy from' ).
 
-    try.
-      zcl_abap_string_map=>create( iv_from = `abc` ).
-      cl_abap_unit_assert=>fail( ).
-    catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'Incorrect input for string_map=>create, typekind g'
-        act = lx->get_text( ) ).
-    endtry.
+    data: begin of ls_dummy,
+            a type string value '1',
+          end of ls_dummy.
 
-    try.
-      zcl_abap_string_map=>create( iv_from = me ).
-      cl_abap_unit_assert=>fail( ).
-    catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'Incorrect string map instance to copy from'
-        act = lx->get_text( ) ).
-    endtry.
+    mo_map->set( iv_key = 'A'
+                 iv_val = '1' ).
 
-    " From obj
-    lo_cut = zcl_abap_string_map=>create( iv_from = lo_src ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = 1
-      act = lo_cut->size( ) ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = '1'
-      act = lo_cut->get( 'A' ) ).
+    assert_from( mo_map ).                  " From object
 
-    " From tab
-    lo_cut = zcl_abap_string_map=>create( iv_from = lo_src->mt_entries ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = 1
-      act = lo_cut->size( ) ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = '1'
-      act = lo_cut->get( 'A' ) ).
+    assert_from( mo_map->mt_entries ).      " From int. table
 
-    " From struc
-    data: begin of ls_dummy, a type string value '1', end of ls_dummy.
-    lo_cut = zcl_abap_string_map=>create( iv_from = ls_dummy ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = 1
-      act = lo_cut->size( ) ).
-    cl_abap_unit_assert=>assert_equals(
-      exp = '1'
-      act = lo_cut->get( 'A' ) ).
-
+    assert_from( ls_dummy ).                " From struc
   endmethod.
 
   method freeze.
-
-    data lx type ref to cx_root.
     data lo_cut type ref to zcl_abap_string_map.
     lo_cut = zcl_abap_string_map=>create( ).
 
-    lo_cut->set(
-      iv_key = 'A'
-      iv_val = 'avalue' )->freeze( ).
-
+    lo_cut->set( iv_key = 'A'
+                 iv_val = 'avalue' )->freeze( ).
     try.
-      lo_cut->set(
-        iv_key = 'A'
-        iv_val = '2' ).
+      lo_cut->set( iv_key = 'A'
+                   iv_val = '2' ).
       cl_abap_unit_assert=>fail( ).
-    catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'String map is read only'
-        act = lx->get_text( ) ).
+    catch cx_root into DATA(lx).
+      assert_read_only_exception( lx ).
     endtry.
 
     try.
-      lo_cut->set(
-        iv_key = 'B'
-        iv_val = '2' ).
+      lo_cut->set( iv_key = 'B'
+                   iv_val = '2' ).
       cl_abap_unit_assert=>fail( ).
     catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'String map is read only'
-        act = lx->get_text( ) ).
+      assert_read_only_exception( lx ).
     endtry.
 
     try.
       lo_cut->delete( 'A' ).
       cl_abap_unit_assert=>fail( ).
     catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'String map is read only'
-        act = lx->get_text( ) ).
+      assert_read_only_exception( lx ).
     endtry.
 
     try.
       lo_cut->clear( ).
       cl_abap_unit_assert=>fail( ).
     catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'String map is read only'
-        act = lx->get_text( ) ).
+      assert_read_only_exception( lx ).
     endtry.
 
-    data lt_entries type zcl_abap_string_map=>tty_entries.
+    data lt_entries type STANDARD TABLE OF zcl_abap_string_map=>ts_entry.
     try.
       lo_cut->from_entries( lt_entries ).
       cl_abap_unit_assert=>fail( ).
     catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'String map is read only'
-        act = lx->get_text( ) ).
+      assert_read_only_exception( lx ).
     endtry.
 
     data ls_dummy type syst.
@@ -154,9 +142,7 @@ class ltcl_string_map implementation.
       lo_cut->from_struc( ls_dummy ).
       cl_abap_unit_assert=>fail( ).
     catch cx_root into lx.
-      cl_abap_unit_assert=>assert_equals(
-        exp = 'String map is read only'
-        act = lx->get_text( ) ).
+      assert_read_only_exception( lx ).
     endtry.
 
   endmethod.

@@ -1,333 +1,244 @@
-class zcl_abap_string_map definition
-  public
-  final
-  create public .
+CLASS zcl_abap_string_map DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
 
-  public section.
+  PUBLIC SECTION.
+    CONSTANTS version TYPE string VALUE 'v1.0.2a'.
 
-    constants version type string value 'v1.0.2'.
+    TYPES:
+      BEGIN OF ts_entry,
+        k TYPE string,
+        v TYPE string,
+      END OF ts_entry.
+    TYPES tt_entries TYPE SORTED TABLE OF ts_entry WITH UNIQUE KEY k.
 
-    types:
-      begin of ty_entry,
-          k type string,
-          v type string,
-        end of ty_entry .
-    types:
-      tty_entries type standard table of ty_entry with key k .
-    types:
-      tts_entries type sorted table of ty_entry with unique key k .
+    DATA mt_entries TYPE tt_entries READ-ONLY.
 
-    data mt_entries type tts_entries read-only.
+    CLASS-METHODS create
+      IMPORTING
+        !iv_case_insensitive TYPE abap_bool DEFAULT abap_false
+        !iv_from             TYPE any OPTIONAL
+      RETURNING
+        VALUE(ro_instance)   TYPE REF TO zcl_abap_string_map.
+    METHODS constructor
+      IMPORTING
+        !iv_case_insensitive TYPE abap_bool DEFAULT abap_false
+        !iv_from TYPE any OPTIONAL.
 
-    class-methods create
-      importing
-        !iv_case_insensitive type abap_bool default abap_false
-        !iv_from type any optional
-      returning
-        value(ro_instance) type ref to zcl_abap_string_map .
-    methods constructor
-      importing
-        !iv_case_insensitive type abap_bool default abap_false
-        !iv_from type any optional.
+    METHODS get
+      IMPORTING
+        !iv_key TYPE string
+      RETURNING
+        VALUE(rv_val) TYPE string.
+    METHODS has
+      IMPORTING
+        !iv_key TYPE string
+      RETURNING
+        VALUE(rv_has) TYPE abap_bool.
+    METHODS set
+      IMPORTING
+        !iv_key       TYPE string
+        !iv_val       TYPE string
+      RETURNING VALUE(ro_map) TYPE REF TO zcl_abap_string_map.
+    METHODS size
+      RETURNING VALUE(rv_size) TYPE i.
+    METHODS is_empty
+      RETURNING VALUE(rv_yes) TYPE abap_bool.
+    METHODS delete
+      IMPORTING !iv_key TYPE string.
+    METHODS keys
+      RETURNING VALUE(rt_keys) TYPE string_table.
+    METHODS values
+      RETURNING
+        VALUE(rt_values) TYPE string_table.
+    METHODS clear.
+    METHODS to_struc
+      CHANGING !cs_container TYPE any.
+    METHODS from_struc
+      IMPORTING !is_container TYPE any.
+    METHODS from_entries
+      IMPORTING !it_entries TYPE ANY TABLE.
+    METHODS strict
+      IMPORTING !iv_strict         TYPE abap_bool DEFAULT abap_true
+      RETURNING VALUE(ro_instance) TYPE REF TO zcl_abap_string_map.
+    METHODS freeze.
 
-    methods get
-      importing
-        !iv_key type string
-      returning
-        value(rv_val) type string .
-    methods has
-      importing
-        !iv_key type string
-      returning
-        value(rv_has) type abap_bool .
-    methods set
-      importing
-        !iv_key type string
-        !iv_val type string
-      returning
-        value(ro_map) type ref to zcl_abap_string_map.
-    methods size
-      returning
-        value(rv_size) type i .
-    methods is_empty
-      returning
-        value(rv_yes) type abap_bool .
-    methods delete
-      importing
-        !iv_key type string .
-    methods keys
-      returning
-        value(rt_keys) type string_table .
-    methods values
-      returning
-        value(rt_values) type string_table .
-    methods clear.
-    methods to_struc
-      changing
-        !cs_container type any.
-    methods from_struc
-      importing
-        !is_container type any.
-    methods from_entries
-      importing
-        !it_entries type any table.
-    methods strict
-      importing
-        !iv_strict type abap_bool default abap_true
-      returning
-        value(ro_instance) type ref to zcl_abap_string_map .
-    methods freeze.
+  PROTECTED SECTION.
+    METHODS upcase
+      IMPORTING !iv_key       TYPE string
+      RETURNING VALUE(rv_key) TYPE string.
 
-  protected section.
-  private section.
-    data mv_is_strict type abap_bool.
-    data mv_read_only type abap_bool.
-    data mv_case_insensitive type abap_bool.
+    METHODS check_mutable.
+    CLASS-METHODS raise IMPORTING text TYPE string.
+    CLASS-METHODS get_components IMPORTING is_container TYPE any
+                                 RETURNING VALUE(rt_comp) TYPE ABAP_COMPDESCR_TAB.
+
+  PRIVATE SECTION.
+    DATA mv_is_strict TYPE abap_bool.
+    DATA mv_read_only TYPE abap_bool.
+    DATA mv_case_insensitive TYPE abap_bool.
 ENDCLASS.
 
+CLASS zcl_abap_string_map IMPLEMENTATION.
 
+  METHOD clear.
+    check_mutable(  ).
+    CLEAR mt_entries.
+  ENDMETHOD.
 
-CLASS ZCL_ABAP_STRING_MAP IMPLEMENTATION.
-
-
-  method clear.
-
-    if mv_read_only = abap_true.
-      lcx_error=>raise( 'String map is read only' ).
-    endif.
-
-    clear mt_entries.
-
-  endmethod.
-
-
-  method constructor.
+  METHOD constructor.
     mv_is_strict = abap_true.
     mv_case_insensitive = iv_case_insensitive.
 
-    if iv_from is not initial.
-      data lo_type type ref to cl_abap_typedescr.
-      lo_type = cl_abap_typedescr=>describe_by_data( iv_from ).
+    CHECK iv_from IS NOT INITIAL.
+    DATA(lv_kind) = cl_abap_typedescr=>describe_by_data( iv_from )->type_kind.
 
-      case lo_type->type_kind.
-        when cl_abap_typedescr=>typekind_struct1 or cl_abap_typedescr=>typekind_struct2.
-          me->from_struc( iv_from ).
+    CASE lv_kind.
+      WHEN cl_abap_typedescr=>typekind_struct1
+        OR cl_abap_typedescr=>typekind_struct2.
+        from_struc( iv_from ).
 
-        when cl_abap_typedescr=>typekind_oref.
-          data lo_from type ref to zcl_abap_string_map.
-          try.
-            lo_from ?= iv_from.
-          catch cx_sy_move_cast_error.
-            lcx_error=>raise( 'Incorrect string map instance to copy from' ).
-          endtry.
-          me->mt_entries = lo_from->mt_entries.
+      WHEN cl_abap_typedescr=>typekind_oref.
+        TRY.
+            mt_entries = CAST zcl_abap_string_map( iv_from )->mt_entries.
+          CATCH cx_sy_move_cast_error.
+            raise( 'Incorrect string map instance to copy from' ).
+        ENDTRY.
 
-        when cl_abap_typedescr=>typekind_table.
-          me->from_entries( iv_from ).
+      WHEN cl_abap_typedescr=>typekind_table.
+        from_entries( iv_from ).
 
-        when others.
-          lcx_error=>raise( |Incorrect input for string_map=>create, typekind { lo_type->type_kind }| ).
-      endcase.
-    endif.
-
-  endmethod.
+      WHEN OTHERS.
+        raise( |Incorrect input for string_map=>create, typekind { lv_kind }| ).
+    ENDCASE.
+  ENDMETHOD.
 
 
-  method create.
-    create object ro_instance
-      exporting
-        iv_case_insensitive = iv_case_insensitive
-        iv_from = iv_from.
-  endmethod.
+  METHOD create.
+    ro_instance = NEW #( iv_case_insensitive = iv_case_insensitive
+                         iv_from             = iv_from ).
+  ENDMETHOD.
 
+  METHOD raise.
+    lcx_error=>raise( text ).
+  ENDMETHOD.
 
-  method delete.
+  METHOD check_mutable.
+    CHECK mv_read_only = abap_true.
+    raise( 'String map is read only' ).
+  ENDMETHOD.
 
-    if mv_read_only = abap_true.
-      lcx_error=>raise( 'String map is read only' ).
-    endif.
+  METHOD delete.
+    check_mutable( ).
+    DELETE mt_entries WHERE k = iv_key.
+  ENDMETHOD.
 
-    delete mt_entries where k = iv_key.
-
-  endmethod.
-
-
-  method freeze.
+  METHOD freeze.
     mv_read_only = abap_true.
+  ENDMETHOD.
+
+  METHOD from_entries.
+    FIELD-SYMBOLS <entry> TYPE ts_entry.
+
+    check_mutable( ).
+
+    LOOP AT it_entries ASSIGNING <entry> CASTING.
+      set( iv_key = <entry>-k
+           iv_val = <entry>-v ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  method get_components.
+    DATA(lo_type) = cl_abap_typedescr=>describe_by_data( is_container ).
+    CASE lo_type->type_kind.
+      WHEN cl_abap_typedescr=>typekind_struct1
+        OR cl_abap_typedescr=>typekind_struct2.
+        rt_comp = CAST cl_abap_structdescr( lo_type )->components.
+      WHEN OTHERS.
+        raise( 'Only structures supported' ).
+    ENDCASE.
   endmethod.
 
+  METHOD from_struc.
+    FIELD-SYMBOLS <val> TYPE any.
 
-  method from_entries.
+    clear( ).
 
-    field-symbols <i> type ty_entry.
+    LOOP AT get_components( is_container ) ASSIGNING FIELD-SYMBOL(<c>)
+      WHERE type_kind CO 'bsI8PaeFCNgXyDT'. " values
+      ASSIGN COMPONENT <c>-name OF STRUCTURE is_container TO <val>.
+      ASSERT sy-subrc = 0.
+      set( iv_key = |{ <c>-name }|
+           iv_val = |{ <val> }| ).
+    ENDLOOP.
+  ENDMETHOD.
 
-    if mv_read_only = abap_true.
-      lcx_error=>raise( 'String map is read only' ).
-    endif.
+  METHOD has.
+    rv_has = xsdbool( line_exists( mt_entries[ k = iv_key ] ) ).
+  ENDMETHOD.
 
-    loop at it_entries assigning <i> casting.
-      set(
-        iv_key = <i>-k
-        iv_val = <i>-v ).
-    endloop.
+  METHOD is_empty.
+    rv_yes = xsdbool( lines( mt_entries ) = 0 ).
+  ENDMETHOD.
 
-  endmethod.
+  METHOD keys.
+    rt_keys = VALUE #( FOR <entry> IN mt_entries ( <entry>-k ) ).
+  ENDMETHOD.
 
+  METHOD values.
+    rt_values = VALUE #( FOR <entry> IN mt_entries ( <entry>-v ) ).
+  ENDMETHOD.
 
-  method from_struc.
+  METHOD upcase.
+    rv_key = SWITCH string( mv_case_insensitive WHEN abap_true THEN to_upper( iv_key ) ELSE iv_key ).
+  ENDMETHOD.
 
-    data lo_type type ref to cl_abap_typedescr.
-    data lo_struc type ref to cl_abap_structdescr.
-    field-symbols <c> like line of lo_struc->components.
-    field-symbols <val> type any.
+  METHOD get.
+    rv_val = VALUE #( mt_entries[ k = upcase( iv_key ) ]-v OPTIONAL ).
+  ENDMETHOD.
 
-    if mv_read_only = abap_true.
-      lcx_error=>raise( 'String map is read only' ).
-    endif.
+  METHOD set.
+    check_mutable( ).
+    DATA(ls_entry) = VALUE ts_entry( k = upcase( iv_key )
+                                     v = iv_val ).
 
-    clear mt_entries.
-
-    lo_type = cl_abap_typedescr=>describe_by_data( is_container ).
-    if lo_type->type_kind <> cl_abap_typedescr=>typekind_struct1
-      and lo_type->type_kind <> cl_abap_typedescr=>typekind_struct2.
-      lcx_error=>raise( 'Only structures supported' ).
-    endif.
-
-    lo_struc ?= lo_type.
-    loop at lo_struc->components assigning <c>.
-      check <c>-type_kind co 'bsI8PaeFCNgXyDT'. " values
-      assign component <c>-name of structure is_container to <val>.
-      assert sy-subrc = 0.
-      set(
-        iv_key = |{ <c>-name }|
-        iv_val = |{ <val> }| ).
-    endloop.
-
-  endmethod.
-
-
-  method get.
-
-    data lv_key like iv_key.
-    field-symbols <entry> like line of mt_entries.
-
-    if mv_case_insensitive = abap_true.
-      lv_key = to_upper( iv_key ).
-    else.
-      lv_key = iv_key.
-    endif.
-
-    read table mt_entries assigning <entry> with key k = lv_key.
-    if sy-subrc = 0.
-      rv_val = <entry>-v.
-    endif.
-
-  endmethod.
-
-
-  method has.
-
-    read table mt_entries transporting no fields with key k = iv_key.
-    rv_has = boolc( sy-subrc = 0 ).
-
-  endmethod.
-
-
-  method is_empty.
-    rv_yes = boolc( lines( mt_entries ) = 0 ).
-  endmethod.
-
-
-  method keys.
-
-    field-symbols <entry> like line of mt_entries.
-    loop at mt_entries assigning <entry>.
-      append <entry>-k to rt_keys.
-    endloop.
-
-  endmethod.
-
-
-  method set.
-
-    data ls_entry like line of mt_entries.
-    data lv_key like iv_key.
-    field-symbols <entry> like line of mt_entries.
-
-    if mv_read_only = abap_true.
-      lcx_error=>raise( 'String map is read only' ).
-    endif.
-
-    if mv_case_insensitive = abap_true.
-      lv_key = to_upper( iv_key ).
-    else.
-      lv_key = iv_key.
-    endif.
-
-    read table mt_entries assigning <entry> with key k = lv_key.
-    if sy-subrc = 0.
-      <entry>-v = iv_val.
-    else.
-      ls_entry-k = lv_key.
-      ls_entry-v = iv_val.
-      insert ls_entry into table mt_entries.
-    endif.
+    ASSIGN mt_entries[ k = ls_entry-k ] TO FIELD-SYMBOL(<entry>).
+    IF sy-subrc = 0.
+      <entry>-v = ls_entry-v.
+    ELSE.
+      INSERT ls_entry INTO TABLE mt_entries.
+    ENDIF.
 
     ro_map = me.
+  ENDMETHOD.
 
-  endmethod.
-
-
-  method size.
-
+  METHOD size.
     rv_size = lines( mt_entries ).
+  ENDMETHOD.
 
-  endmethod.
-
-
-  method strict.
+  METHOD strict.
     mv_is_strict = iv_strict.
     ro_instance = me.
-  endmethod.
+  ENDMETHOD.
 
+  METHOD to_struc.
+    FIELD-SYMBOLS <val> TYPE any.
 
-  method to_struc.
+    get_components( cs_container ).
 
-    data lo_type type ref to cl_abap_typedescr.
-    data lo_struc type ref to cl_abap_structdescr.
-    data lv_field type string.
-    field-symbols <entry> like line of mt_entries.
-    field-symbols <val> type any.
+    LOOP AT mt_entries ASSIGNING FIELD-SYMBOL(<entry>).
+      DATA(lv_field) = to_upper( <entry>-k ).
+      ASSIGN COMPONENT lv_field OF STRUCTURE cs_container TO <val>.
+      IF sy-subrc = 0.
+        <val> = <entry>-v.      " TODO check target type ?
+      ELSEIF mv_is_strict = abap_true.
+        raise( |Component { lv_field } not found in target| ).
+      ELSE.
+        CONTINUE.
+      ENDIF.
+    ENDLOOP.
 
-    lo_type = cl_abap_typedescr=>describe_by_data( cs_container ).
-    if lo_type->type_kind <> cl_abap_typedescr=>typekind_struct1
-      and lo_type->type_kind <> cl_abap_typedescr=>typekind_struct2.
-      lcx_error=>raise( 'Only structures supported' ).
-    endif.
+  ENDMETHOD.
 
-    lo_struc ?= lo_type.
-    loop at mt_entries assigning <entry>.
-      lv_field = to_upper( <entry>-k ).
-      assign component lv_field of structure cs_container to <val>.
-      if sy-subrc = 0.
-        " TODO check target type ?
-        <val> = <entry>-v.
-      elseif mv_is_strict = abap_false.
-        continue.
-      else.
-        lcx_error=>raise( |Component { lv_field } not found in target| ).
-      endif.
-    endloop.
-
-  endmethod.
-
-
-  method values.
-
-    field-symbols <entry> like line of mt_entries.
-    loop at mt_entries assigning <entry>.
-      append <entry>-v to rt_values.
-    endloop.
-
-  endmethod.
 ENDCLASS.

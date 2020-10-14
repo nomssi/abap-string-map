@@ -14,12 +14,12 @@ class lcx_error definition final inheriting from cx_no_check.
     data msg type string read-only.
 
     class-methods raise
-      importing
-        iv_msg type string.
+      importing iv_msg type string.
   private section.
 endclass.
 
 class lcx_error implementation.
+
   method raise.
     data lx type ref to lcx_error.
     create object lx.
@@ -27,4 +27,5 @@ class lcx_error implementation.
     lx->if_t100_message~t100key = c_error_signature.
     raise exception lx.
   endmethod.
+
 endclass.
